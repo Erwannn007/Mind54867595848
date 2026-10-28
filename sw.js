@@ -1,5 +1,5 @@
 // Hors-ligne : réseau d'abord (pour recevoir les mises à jour), cache en secours.
-const CACHE = 'everlune-v3';
+const CACHE = 'everlune-v4';
 const FILES = [
   './', 'index.html', 'style.css', 'manifest.webmanifest', 'lib/three.module.min.js',
   'src/main.js', 'src/noise.js', 'src/names.js', 'src/world.js', 'src/textures.js', 'src/materials.js',

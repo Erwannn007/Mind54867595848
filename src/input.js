@@ -11,6 +11,8 @@ export class Input {
     this.ui = ui;
     this.onActivity = () => {};
     this.pad = null; // Gamepads, branché par main.js
+    this.touchVert = 0; // boutons ▲ ▼ du vol
+    this.onFlyToggle = () => {};
 
     el.addEventListener('pointerdown', (e) => this.down(e));
     window.addEventListener('pointermove', (e) => this.moveEv(e));
@@ -18,6 +20,8 @@ export class Input {
     window.addEventListener('pointercancel', (e) => this.up(e));
     window.addEventListener('keydown', (e) => {
       if (e.target.tagName === 'INPUT') return;
+      if (e.code === 'KeyF' && !e.repeat) this.onFlyToggle();
+      if (e.code === 'Space') e.preventDefault();
       this.keys.add(e.code);
       this.onActivity();
     });
@@ -92,6 +96,15 @@ export class Input {
     if (len > 1) { x /= len; y /= len; }
     const run = k.has('ShiftLeft') || k.has('ShiftRight') || (this.pad && this.pad.run);
     return { x, y, run };
+  }
+
+  // monter / descendre en vol (-1..1)
+  vertical() {
+    const k = this.keys;
+    let v = this.touchVert + (this.pad ? this.pad.vert : 0);
+    if (k.has('Space') || k.has('KeyE')) v += 1;
+    if (k.has('KeyC') || k.has('ControlLeft') || k.has('KeyX')) v -= 1;
+    return Math.max(-1, Math.min(1, v));
   }
 
   keyTurn() {

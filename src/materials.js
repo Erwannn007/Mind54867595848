@@ -123,5 +123,41 @@ export function createMaterials() {
     blending: THREE.AdditiveBlending,
   });
 
-  return { terrain, veg, detail, halo };
+  // fumée des cheminées : volutes pixelisées qui montent et dérivent avec le vent
+  const smoke = new THREE.ShaderMaterial({
+    uniforms: { uTime: shared.uTime, uNight: shared.uNight, uPx: shared.uPx, uWind: shared.uWind, ...THREE.UniformsLib.fog },
+    vertexShader: /* glsl */ `
+      attribute float aSeed;
+      uniform float uTime, uPx, uWind;
+      varying float vA;
+      #include <fog_pars_vertex>
+      void main() {
+        float t = fract(uTime * 0.06 + aSeed);
+        vec3 p = position;
+        p.y += t * 7.0;
+        p.x += t * t * 4.0 * uWind + sin(uTime * 0.7 + aSeed * 20.0) * 0.35 * t;
+        p.z += t * 1.5 + cos(uTime * 0.5 + aSeed * 13.0) * 0.3 * t;
+        vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);
+        gl_PointSize = clamp((0.5 + t * 2.4) * uPx / -mvPosition.z, 0.0, 120.0);
+        gl_Position = projectionMatrix * mvPosition;
+        vA = smoothstep(0.0, 0.08, t) * (1.0 - t);
+        #include <fog_vertex>
+      }`,
+    fragmentShader: /* glsl */ `
+      uniform float uNight;
+      varying float vA;
+      #include <fog_pars_fragment>
+      void main() {
+        float d = length(gl_PointCoord - 0.5) * 2.0;
+        float a = floor(max(1.0 - d * d, 0.0) * 3.0) / 3.0 * vA * 0.42;
+        if (a <= 0.01) discard;
+        gl_FragColor = vec4(mix(vec3(0.86, 0.84, 0.9), vec3(0.42, 0.44, 0.58), uNight), a);
+        #include <fog_fragment>
+      }`,
+    transparent: true,
+    depthWrite: false,
+    fog: true,
+  });
+
+  return { terrain, veg, detail, halo, smoke };
 }

@@ -12,6 +12,7 @@ Un petit monde 3D cozy et onirique, généré à partir d'une graine, à explore
 | iPhone | Ordinateur |
 | --- | --- |
 | Pouce gauche : joystick (pousser à fond = courir) | ZQSD / WASD, Maj pour courir |
+| 🕊 : s'envoler / se poser, ▲ ▼ pour monter et descendre | F : voler, Espace / C : monter / descendre |
 | Glisser à droite : regarder | Glisser à la souris, flèches |
 | 🏠 : construire son refuge | |
 | ☾ : heure, vitesse du temps, pixels, horizon, carnet, monde | |

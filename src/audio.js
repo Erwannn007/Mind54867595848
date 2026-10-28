@@ -35,6 +35,7 @@ export class AudioEngine {
     this.env = {
       night: 0, tod: 0.3, wind: 1, altitude: 5, forest: 0, dream: 0, snow: 0,
       river: 0, lake: 0, swimming: false, fire: 0, village: 0, speed: 0,
+      flying: false, flySpeed: 0, agl: 0, indoor: false,
     };
     this.timers = {};
     this.music = { playing: false, nextStart: 0, nextBeat: 0, beat: 0, bars: 0, chord: 0, melodyNote: 2, night: false };
@@ -86,9 +87,14 @@ export class AudioEngine {
 
     this.bus = {};
     const sends = { music: 0.6, amb: 0.22, sfx: 0.18 };
+    // la nature passe par un filtre : feutrée quand on est à l'intérieur
+    this.ambLP = c.createBiquadFilter();
+    this.ambLP.type = 'lowpass';
+    this.ambLP.frequency.value = 20000;
+    this.ambLP.connect(this.master);
     for (const k of ['music', 'amb', 'sfx']) {
       const g = c.createGain();
-      g.connect(this.master);
+      g.connect(k === 'amb' ? this.ambLP : this.master);
       const s = c.createGain();
       s.gain.value = sends[k];
       g.connect(s).connect(this.reverb);
@@ -178,6 +184,9 @@ export class AudioEngine {
       lake: this.loop(this.brown, [['lowpass', 520, 0.6]], A),
       fire: this.loop(this.brown, [['lowpass', 320, 0.7]], A),
       dream: this.loop(this.pink, [['bandpass', 5200, 9]], A),
+      rush: this.loop(this.pink, [['bandpass', 420, 0.6]], A),
+      hiss: this.loop(this.white, [['highpass', 3800, 0.5]], A),
+      gustWhistle: this.loop(this.pink, [['bandpass', 1400, 10]], A),
     };
   }
 
@@ -191,10 +200,21 @@ export class AudioEngine {
     const T = 0.6; // constante de lissage (s)
     const set = (param, v, tc = T) => param.setTargetAtTime(v, t, tc);
 
+    // dedans : la nature s'étouffe, le feu crépite
+    set(this.ambLP.frequency, e.indoor ? 650 : 20000, 0.25);
+
+    // vol : le souffle de l'air qui file, plus aigu avec la vitesse
+    const fs = e.flying ? clamp01(e.flySpeed / 34) : 0;
+    set(this.amb.rush.gain.gain, 0.32 * Math.pow(fs, 1.4) + (e.flying ? 0.03 : 0), 0.3);
+    set(this.amb.rush.filters[0].frequency, 300 + fs * 900, 0.3);
+    set(this.amb.hiss.gain.gain, 0.05 * Math.pow(fs, 2), 0.3);
+    set(this.amb.gustWhistle.gain.gain, e.flying ? 0.012 * clamp01(e.agl / 80) * (0.5 + 0.5 * Math.sin(t * 0.4)) : 0, 1);
+    set(this.amb.gustWhistle.filters[0].frequency, 1100 + 500 * Math.sin(t * 0.13), 1.5);
+
     // vent : plus fort en altitude, porté par les rafales du monde
-    const high = clamp01((e.altitude - 18) / 45);
+    const high = clamp01((Math.max(e.altitude, e.flying ? e.agl + 20 : 0) - 18) / 45);
     const gust = 0.5 + 0.5 * Math.sin(t * 0.23) * Math.sin(t * 0.071 + 1.3);
-    const windAmt = (0.05 + 0.1 * e.wind * gust + 0.22 * high) * (e.swimming ? 0.4 : 1);
+    const windAmt = (0.05 + 0.1 * e.wind * gust + 0.22 * high) * (e.swimming ? 0.4 : 1) * (e.indoor ? 0.5 : 1);
     set(this.amb.wind.gain.gain, windAmt * 0.9);
     set(this.amb.wind.filters[0].frequency, 280 + 380 * gust + 300 * high, 1.2);
     set(this.amb.whistle.gain.gain, 0.012 * high * gust * e.wind);
@@ -314,6 +334,11 @@ export class AudioEngine {
           this.burst(t + i * rnd(0.012, 0.024), { filter: 'bandpass', freq: rnd(2200, 3600), q: 1.2, attack: 0.002, decay: 0.02, gain: 0.16 * v, dest: d });
         }
         this.burst(t, { filter: 'lowpass', freq: 700, q: 0.5, attack: 0.01, decay: 0.12, gain: 0.12 * v, dest: d });
+        break;
+      case 'wood': // plancher creux qui craque un peu
+        this.tone(t, { freq: rnd(120, 150), glide: 85, glideTime: 0.07, attack: 0.002, decay: 0.12, gain: 0.24 * v, dest: d });
+        this.burst(t, { filter: 'bandpass', freq: rnd(700, 950), q: 2.5, attack: 0.002, decay: 0.06, gain: 0.22 * v, dest: d });
+        if (Math.random() < 0.18) this.tone(t + 0.05, { freq: rnd(380, 520), glide: rnd(300, 600), glideTime: 0.2, type: 'triangle', attack: 0.03, decay: 0.2, gain: 0.015, dest: d });
         break;
       case 'dirt':
         this.burst(t, { filter: 'bandpass', freq: rnd(900, 1300), q: 0.9, attack: 0.005, decay: 0.09, gain: 0.3 * v, dest: d });
@@ -457,6 +482,14 @@ export class AudioEngine {
       case 'remove':
         this.burst(t, { filter: 'bandpass', freq: 2200, sweep: 300, q: 1.2, attack: 0.02, decay: 0.3, gain: 0.06, dest: d });
         this.bell(t + 0.05, note(0, 2), 0.02, d, 1.2);
+        break;
+      case 'takeoff':
+        this.burst(t, { filter: 'bandpass', freq: 250, sweep: 1600, q: 0.9, attack: 0.15, decay: 0.6, gain: 0.12, dest: d });
+        [0, 2, 4].forEach((deg, i) => this.bell(t + 0.1 + i * 0.09, note(deg, 3), 0.018, d, 1.6));
+        break;
+      case 'land':
+        this.burst(t, { filter: 'lowpass', freq: 900, q: 0.6, attack: 0.005, decay: 0.18, gain: 0.3, dest: d });
+        this.tone(t, { freq: 90, glide: 45, glideTime: 0.12, attack: 0.003, decay: 0.15, gain: 0.25, dest: d });
         break;
       case 'pad':
         this.bell(t, note(0, 3), 0.025, d, 1.2);

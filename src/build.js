@@ -3,8 +3,9 @@
 import * as THREE from 'three';
 import { Builder, hex } from './builder.js';
 import { mulberry32 } from './noise.js';
-import { makeHalos } from './chunks.js';
+import { makeHalos, makeSmoke } from './chunks.js';
 import * as props from './props.js';
+import { insideHouse } from './world.js';
 
 const { P, COLORS } = props;
 const M = Builder.matrix;
@@ -18,7 +19,13 @@ export const ITEMS = [
   { id: 'cabin', label: 'Cabane' },
 ];
 
-function buildItem(B, halos, colliders, item) {
+// Cabane du joueur : même maison que dans les villages, la porte tournée vers lui.
+export function cabinHouse(item) {
+  return { x: item.x, z: item.z, rot: item.rot, w: 4.8, d: 4.3, style: (item.seed || 0) % 3 };
+}
+
+function buildItem(B, out, item) {
+  const { halos, colliders } = out;
   const { type, x, y, z, rot } = item;
   const L = (lx, ly, lz, sx, sy, sz, ry = 0) => M(lx, ly, lz, ry, sx, sy, sz, 0, 0, M(x, y, z, rot));
   switch (type) {
@@ -60,7 +67,7 @@ function buildItem(B, halos, colliders, item) {
       colliders.push({ x, z, r: 1.3 });
       break;
     case 'cabin':
-      props.house(B, halos, colliders, x, y, z, rot, { w: 3.2, d: 3 });
+      props.house(B, out, cabinHouse(item), y);
       break;
   }
 }
@@ -73,6 +80,7 @@ export class Builds {
     this.items = [];
     this.meshes = [];
     this.haloPoints = null;
+    this.smokePoints = null;
   }
 
   load(items) {
@@ -84,6 +92,14 @@ export class Builds {
     const y = this.chunks.surfaceHeight(x, z);
     this.items.push({ type, x, y, z, rot, seed: Math.floor(Math.random() * 1e9) });
     this.rebuild();
+  }
+
+  // la cabane (posée par le joueur) où l'on se trouve, s'il y en a une
+  houseAt(x, z, margin = 0) {
+    for (const it of this.items) {
+      if (it.type === 'cabin' && insideHouse(cabinHouse(it), x, z, margin)) return it;
+    }
+    return null;
   }
 
   removeNear(x, z, maxD = 4.5) {
@@ -104,15 +120,16 @@ export class Builds {
       m.geometry.dispose();
     }
     this.meshes = [];
-    if (this.haloPoints) {
-      this.scene.remove(this.haloPoints);
-      this.haloPoints.geometry.dispose();
-      this.haloPoints = null;
+    for (const k of ['haloPoints', 'smokePoints']) {
+      if (!this[k]) continue;
+      this.scene.remove(this[k]);
+      this[k].geometry.dispose();
+      this[k] = null;
     }
-    const halos = [], colliders = [];
+    const halos = [], colliders = [], smoke = [];
     for (const it of this.items) {
       const B = new Builder(mulberry32(it.seed || 1));
-      buildItem(B, halos, colliders, it);
+      buildItem(B, { halos, colliders, smoke }, it);
       const mesh = new THREE.Mesh(B.toGeometry(), this.mat.veg);
       this.scene.add(mesh);
       this.meshes.push(mesh);
@@ -120,6 +137,10 @@ export class Builds {
     if (halos.length) {
       this.haloPoints = makeHalos(halos, this.mat.halo);
       this.scene.add(this.haloPoints);
+    }
+    if (smoke.length) {
+      this.smokePoints = makeSmoke(smoke, this.mat.smoke);
+      this.scene.add(this.smokePoints);
     }
     this.chunks.extraColliders = colliders;
   }

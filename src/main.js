@@ -7,7 +7,7 @@ import { createMaterials, shared } from './materials.js';
 import { ChunkManager } from './chunks.js';
 import { Sky, timeLabel } from './sky.js';
 import { Water } from './water.js';
-import { Motes } from './particles.js';
+import { Motes, Streaks, Birds } from './particles.js';
 import { Player } from './player.js';
 import { Input } from './input.js';
 import { UI } from './ui.js';
@@ -15,7 +15,7 @@ import { Builds } from './build.js';
 import { loadSave, writeSave } from './save.js';
 import { Gamepads } from './gamepad.js';
 import { AudioEngine } from './audio.js';
-import { CHUNK_SIZE } from './world.js';
+import { CHUNK_SIZE, segDist } from './world.js';
 
 const DAY_SECONDS = 24 * 60; // une journée complète = 24 minutes à vitesse normale
 
@@ -32,6 +32,8 @@ const materials = createMaterials();
 const sky = new Sky(scene);
 const water = new Water(scene);
 const motes = new Motes(scene);
+const streaks = new Streaks(scene);
+const birds = new Birds(scene);
 const ui = new UI();
 const input = new Input(canvas, ui);
 input.onActivity = () => ui.activity();
@@ -59,6 +61,7 @@ function startWorld(seedStr, keepPosition) {
   chunks = new ChunkManager(world, scene, materials, { radius: save.view, detailRadius: Math.min(2, save.view - 1) });
   player = new Player(scene, camera, chunks);
   player.onStep = (speed) => audio.footstep(surfaceAt(player.x, player.z), speed);
+  player.onLand = (fall) => fall > 4 && audio.ui('land');
   builds = new Builds(scene, materials, chunks);
 
   let x = save.x, z = save.z;
@@ -113,7 +116,7 @@ window.addEventListener('pagehide', persist);
 // ——— interface ———
 ui.init(save);
 ui.on('build', (type) => {
-  const d = 2.8;
+  const d = type === 'cabin' ? 6 : type === 'tent' ? 3.6 : 2.8;
   const x = player.x - Math.sin(player.yaw) * d, z = player.z - Math.cos(player.yaw) * d;
   builds.place(type, x, z, player.yaw);
   audio.ui('build');
@@ -150,8 +153,33 @@ ui.on('seed', (s) => {
   persist();
   ui.toast('Un nouveau monde', seed);
 });
+// ——— vol ———
+let flyHintShown = false;
+function toggleFly() {
+  if (!entered || ui.anyOpen()) return;
+  player.setFlying(!player.flying);
+  document.body.classList.toggle('flying', player.flying);
+  audio.ui(player.flying ? 'takeoff' : 'close');
+  if (player.flying && !flyHintShown) {
+    flyHintShown = true;
+    ui.toast('Envol', 'regarde où tu veux aller');
+  }
+}
+ui.on('fly', toggleFly);
+input.onFlyToggle = toggleFly;
+for (const [id, v] of [['fly-up', 1], ['fly-down', -1]]) {
+  const el = document.getElementById(id);
+  const on = (e) => { e.preventDefault(); e.stopPropagation(); input.touchVert = v; };
+  const off = () => { if (input.touchVert === v) input.touchVert = 0; };
+  el.addEventListener('pointerdown', on);
+  el.addEventListener('pointerup', off);
+  el.addEventListener('pointercancel', off);
+  el.addEventListener('pointerleave', off);
+}
+
 // ——— manette ———
 pads.on = {
+  fly: toggleFly,
   activity: () => ui.activity(),
   menu: () => { ui.padFocusOnOpen = true; ui.toggle('menu'); },
   build: () => { ui.padFocusOnOpen = true; ui.toggle('build-panel'); },
@@ -192,6 +220,7 @@ for (const ev of ['pointerup', 'touchend', 'keydown', 'click']) {
 // surface sous les pieds, pour le son des pas
 function surfaceAt(x, z) {
   const h = chunks.surfaceHeight(x, z);
+  if (indoor) return 'wood';
   if (player.swimming || h < -0.25) return 'water';
   const slope = Math.abs(chunks.surfaceHeight(x + 1, z) - h) + Math.abs(chunks.surfaceHeight(x, z + 1) - h);
   const poi = world.getPoi(Math.floor(x / CHUNK_SIZE), Math.floor(z / CHUNK_SIZE));
@@ -200,6 +229,7 @@ function surfaceAt(x, z) {
   if (b.mountain > 0.55 || slope > 0.9) return 'stone';
   if (poi && poi.type === 'ruins' && Math.hypot(x - poi.x, z - poi.z) < 9) return 'stone';
   if (poi && poi.plaza && Math.hypot(x - poi.x, z - poi.z) < poi.plaza + 1) return 'dirt';
+  if (poi && poi.paths && poi.paths.some(([ax, az, bx, bz]) => segDist(x, z, ax, az, bx, bz) < 1.2)) return 'dirt';
   if (b.beach > 0.5) return 'sand';
   if (b.cold > 0.85 && h > 40) return 'snow';
   return 'grass';
@@ -209,8 +239,10 @@ function surfaceAt(x, z) {
 const RING = [];
 for (const r of [5, 12, 22]) for (let i = 0; i < 8; i++) RING.push([Math.cos((i / 8) * Math.PI * 2) * r, Math.sin((i / 8) * Math.PI * 2) * r, r]);
 const soundEnv = {};
+let indoor = null;
 function listen() {
   const x = player.x, z = player.z;
+  indoor = !player.flying && (world.houseAt(x, z) || builds.houseAt(x, z));
   let water = 0, total = 0, flow = 0;
   for (const [dx, dz, r] of RING) {
     const w = 1 / r;
@@ -237,7 +269,10 @@ function listen() {
   soundEnv.river = wet * flow;
   soundEnv.lake = wet * (1 - flow);
   soundEnv.swimming = player.swimming;
-  soundEnv.fire = Math.max(0, fire);
+  soundEnv.fire = Math.max(0, fire, indoor ? 0.45 : 0);
+  soundEnv.indoor = !!indoor;
+  soundEnv.flying = player.flying;
+  soundEnv.agl = player.agl;
   soundEnv.village = poi && poi.type === 'village' ? Math.max(0, 1 - Math.hypot(poi.x - x, poi.z - z) / 45) : 0;
 }
 
@@ -263,6 +298,25 @@ function discoveries(now) {
   }
 }
 
+// En vol : le champ de vision s'ouvre avec la vitesse, l'horizon recule avec l'altitude.
+let fov = 70;
+function updateFlightView(dt) {
+  const sp = player.flying ? player.speed : 0;
+  const target = 70 + Math.min(1, Math.max(0, (sp - 8) / 26)) * 16;
+  if (Math.abs(target - fov) > 0.05) {
+    fov += (target - fov) * (1 - Math.exp(-dt * 2.5));
+    camera.fov = fov;
+    camera.updateProjectionMatrix();
+    shared.uPx.value = renderer.domElement.height / (2 * Math.tan(THREE.MathUtils.degToRad(fov) / 2));
+  }
+  const high = Math.max(0, player.agl - 25);
+  const R = save.view + (high > 10 ? 1 : 0);
+  if (chunks.radius !== R) chunks.radius = R;
+  const fog = scene.fog;
+  fog.far = Math.min((R + 0.25) * 64, 140 + save.view * 22 + high * 1.6);
+  fog.near = Math.min(fog.far * 0.6, fog.near + high * 0.8);
+}
+
 // ——— boucle ———
 startWorld(save.seed, true);
 resize();
@@ -286,7 +340,11 @@ function frame() {
 
   pads.update(dt, ui.anyOpen());
   player.update(dt, input, skyState.night);
+  soundEnv.flySpeed = player.flying ? player.speed : 0;
+  updateFlightView(dt);
   sky.mesh.position.copy(camera.position);
+  streaks.update(camera.position, player.vx, player.flying ? player.vy : 0, player.vz, skyState.night);
+  birds.update(elapsed, center, chunks.surfaceHeight(player.x, player.z), skyState.night);
   water.update(center, elapsed, skyState);
   motes.update(center, (x, z) => chunks.surfaceHeight(x, z));
   chunks.update(player.x, player.z, ready ? 5 : 30);

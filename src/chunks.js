@@ -1,7 +1,7 @@
 // Chargement / déchargement progressif des zones autour du joueur.
 
 import * as THREE from 'three';
-import { CHUNK_SIZE, WATER_LEVEL } from './world.js';
+import { CHUNK_SIZE, WATER_LEVEL, segDist } from './world.js';
 import { hash2, mulberry32 } from './noise.js';
 import { Builder, hex } from './builder.js';
 import { SPRITE } from './textures.js';
@@ -10,7 +10,7 @@ import * as props from './props.js';
 const SEG = 20;
 const STEP = CHUNK_SIZE / SEG;
 
-const POI_CLEAR = { village: 24, ruins: 11, cabin: 9, stones: 9, island: 0 };
+const POI_CLEAR = { village: 27, ruins: 11, cabin: 10, stones: 9, island: 0 };
 
 export class ChunkManager {
   constructor(world, scene, materials, { radius = 3, detailRadius = 2 } = {}) {
@@ -105,7 +105,7 @@ export class ChunkManager {
   buildChunk(cx, cz) {
     const world = this.world;
     const x0 = cx * CHUNK_SIZE, z0 = cz * CHUNK_SIZE;
-    const ch = { cx, cz, colliders: [], halos: [], detail: null, poi: world.getPoi(cx, cz) };
+    const ch = { cx, cz, colliders: [], halos: [], smoke: [], detail: null, poi: world.getPoi(cx, cz) };
 
     // ——— Terrain ———
     const W = SEG + 1;
@@ -164,6 +164,7 @@ export class ChunkManager {
     const B = new Builder(rand);
     this.placeVegetation(ch, B, x0, z0);
     this.placePoi(ch, B);
+    this.placeClouds(ch, B, x0, z0);
     if (B.count > 0) {
       const vg = B.toGeometry();
       vg.translate(-x0, 0, -z0);
@@ -173,6 +174,10 @@ export class ChunkManager {
       ch.veg.updateMatrix();
       this.scene.add(ch.veg);
     }
+    if (ch.smoke.length) {
+      ch.smokePoints = makeSmoke(ch.smoke, this.mat.smoke);
+      this.scene.add(ch.smokePoints);
+    }
     if (ch.halos.length) {
       ch.haloPoints = makeHalos(ch.halos, this.mat.halo);
       this.scene.add(ch.haloPoints);
@@ -180,11 +185,26 @@ export class ChunkManager {
     return ch;
   }
 
+  // Pas de végétation sur un lieu (ni sur celui d'un chunk voisin qui déborde).
   clearOfPoi(ch, x, z) {
-    const poi = ch.poi;
-    if (!poi) return true;
-    const r = POI_CLEAR[poi.type] || 0;
-    return Math.hypot(x - poi.x, z - poi.z) > r;
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const poi = this.world.getPoi(ch.cx + dx, ch.cz + dz);
+        if (poi && Math.hypot(x - poi.x, z - poi.z) < (POI_CLEAR[poi.type] || 0)) return false;
+      }
+    }
+    return true;
+  }
+
+  // Village voisin (pour les herbes : rien sur les chemins, fleurs dans les jardins).
+  villageNear(ch, x, z) {
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const poi = this.world.getPoi(ch.cx + dx, ch.cz + dz);
+        if (poi && poi.houses && Math.hypot(x - poi.x, z - poi.z) < 40) return poi;
+      }
+    }
+    return null;
   }
 
   placeVegetation(ch, B, x0, z0) {
@@ -232,13 +252,30 @@ export class ChunkManager {
     }
   }
 
+  // Quelques nuages bas, à traverser en volant.
+  placeClouds(ch, B, x0, z0) {
+    const r = B.rand;
+    if (hash2(ch.cx, ch.cz, this.world.seed + 700) > 0.28) return;
+    const cx = x0 + 10 + r() * 44, cz = z0 + 10 + r() * 44;
+    const cy = 95 + r() * 45;
+    const n = 4 + Math.floor(r() * 5);
+    const stretch = 1 + r() * 0.8, rot = r() * Math.PI;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + r();
+      const d = r() * 9 * stretch;
+      const s = 5 + r() * 6;
+      B.add(props.P.crownSoft, Builder.matrix(cx + Math.cos(a + rot) * d, cy + (r() - 0.3) * 2.5, cz + Math.sin(a + rot) * d * 0.6, r() * 6, s * 1.3, s * 0.55, s), CLOUD, { jitter: 0.03, ao: 0.28 });
+    }
+  }
+
   placePoi(ch, B) {
     const poi = ch.poi;
     if (!poi) return;
     const w = this.world;
-    if (poi.type === 'village') props.village(B, ch.halos, ch.colliders, w, poi);
+    const out = { halos: ch.halos, colliders: ch.colliders, smoke: ch.smoke };
+    if (poi.type === 'village') props.village(B, out, w, poi);
     else if (poi.type === 'ruins') props.ruins(B, ch.halos, ch.colliders, w, poi);
-    else if (poi.type === 'cabin') props.cabin(B, ch.halos, ch.colliders, w, poi);
+    else if (poi.type === 'cabin') props.cabin(B, out, w, poi);
     else if (poi.type === 'stones') props.stoneCircle(B, ch.halos, ch.colliders, w, poi);
     else if (poi.type === 'island') props.floatingIsland(B, ch.halos, poi);
   }
@@ -263,13 +300,15 @@ export class ChunkManager {
         if (h < 0.35) continue;
         const b = world.biome(x, z, h);
         if (b.mountain > 0.8 && roll > 0.1) continue;
-        if (poi && poi.plaza && Math.hypot(x - poi.x, z - poi.z) < poi.plaza + 1) continue;
-
         let garden = 0;
-        if (poi && poi.type === 'village') {
-          const d = Math.hypot(x - poi.x, z - poi.z);
-          garden = d > 8 && d < 20 ? 0.25 : 0;
+        const vil = this.villageNear(ch, x, z);
+        if (vil) {
+          const d = Math.hypot(x - vil.x, z - vil.z);
+          if (d < vil.plaza + 1) continue;
+          if (vil.paths.some(([ax, az, bx, bz]) => segDist(x, z, ax, az, bx, bz) < 1.3)) continue;
+          garden = d > 8 && d < 22 ? 0.2 : 0;
         }
+        if (world.houseAt(x, z, 0.4)) continue;
         const pFlower = 0.015 + b.flowers * 0.32 + b.dream * 0.2 + garden + b.warm * 0.02;
         const pGrass = (0.36 + b.forest * 0.12) * (1 - b.beach * 0.85) * (1 - b.mountain * 0.6);
         const rot = r() * Math.PI;
@@ -312,7 +351,7 @@ export class ChunkManager {
   }
 
   disposeChunk(ch) {
-    for (const k of ['terrain', 'veg', 'detail', 'haloPoints']) {
+    for (const k of ['terrain', 'veg', 'detail', 'haloPoints', 'smokePoints']) {
       const o = ch[k];
       if (!o) continue;
       this.scene.remove(o);
@@ -339,6 +378,7 @@ export class ChunkManager {
 }
 
 const WHITE = [1, 1, 1];
+const CLOUD = [0.97, 0.96, 1.0];
 const srgb = (c) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
 const smooth = (a, b, v) => {
   const t = Math.min(Math.max((v - a) / (b - a), 0), 1);
@@ -360,6 +400,26 @@ export function makeHalos(list, material) {
   g.setAttribute('aSize', new THREE.BufferAttribute(size, 1));
   g.setAttribute('aFlicker', new THREE.BufferAttribute(fl, 1));
   g.computeBoundingSphere();
+  const pts = new THREE.Points(g, material);
+  pts.frustumCulled = false;
+  pts.renderOrder = 2;
+  return pts;
+}
+
+export function makeSmoke(list, material) {
+  const PER = 9;
+  const n = list.length * PER;
+  const pos = new Float32Array(n * 3), seed = new Float32Array(n);
+  list.forEach((e, i) => {
+    for (let k = 0; k < PER; k++) {
+      const j = i * PER + k;
+      pos[j * 3] = e.x; pos[j * 3 + 1] = e.y; pos[j * 3 + 2] = e.z;
+      seed[j] = (k + Math.random() * 0.5) / PER;
+    }
+  });
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('aSeed', new THREE.BufferAttribute(seed, 1));
   const pts = new THREE.Points(g, material);
   pts.frustumCulled = false;
   pts.renderOrder = 2;

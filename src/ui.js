@@ -23,8 +23,9 @@ export class UI {
 
   init(state) {
     const stop = (el) => el.addEventListener('pointerdown', (e) => e.stopPropagation());
-    document.querySelectorAll('.panel, #topbar').forEach(stop);
+    document.querySelectorAll('.panel, #topbar, #fly-ctl').forEach(stop);
 
+    $('btn-fly').onclick = () => this.emit('fly');
     $('btn-build').onclick = () => this.toggle('build-panel');
     $('btn-menu').onclick = () => this.toggle('menu');
     document.querySelectorAll('[data-close]').forEach((b) => (b.onclick = () => this.closeAll()));

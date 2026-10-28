@@ -1,7 +1,7 @@
 // Génération procédurale pure (sans Three.js) : relief, biomes, points d'intérêt.
 // Tout est déterministe à partir de la seed.
 
-import { createSimplex, fbm, hash2, clamp, lerp, smoothstep } from './noise.js';
+import { createSimplex, fbm, hash2, clamp, lerp, smoothstep, mulberry32 } from './noise.js';
 import { placeName } from './names.js';
 
 export const CHUNK_SIZE = 64;
@@ -62,15 +62,29 @@ export class World {
     let h = this.rawHeight(x, z);
     const cx = Math.floor(x / CHUNK_SIZE);
     const cz = Math.floor(z / CHUNK_SIZE);
-    const poi = this.getPoi(cx, cz);
-    if (poi && poi.flatR) {
-      const d = Math.hypot(x - poi.x, z - poi.z);
-      if (d < poi.flatR + 10) {
-        const w = 1 - smoothstep(poi.flatR, poi.flatR + 10, d);
-        h = lerp(h, poi.h, w);
+    // un lieu aplanit le sol autour de lui, même au-delà de son chunk
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const poi = this.getPoi(cx + dx, cz + dz);
+        if (!poi || !poi.flatR) continue;
+        const d = Math.hypot(x - poi.x, z - poi.z);
+        if (d < poi.flatR + 10) h = lerp(h, poi.h, 1 - smoothstep(poi.flatR, poi.flatR + 10, d));
       }
     }
     return h;
+  }
+
+  // Maison (d'un village ou d'une cabane) qui contient ce point, sinon null.
+  houseAt(x, z, margin = 0) {
+    const cx = Math.floor(x / CHUNK_SIZE), cz = Math.floor(z / CHUNK_SIZE);
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const poi = this.getPoi(cx + dx, cz + dz);
+        if (!poi || !poi.houses) continue;
+        for (const ho of poi.houses) if (insideHouse(ho, x, z, margin)) return ho;
+      }
+    }
+    return null;
   }
 
   riverness(x, z) {
@@ -113,8 +127,9 @@ export class World {
 
   // Couleur du sol (linéaire 0..1, sRGB) écrite dans out[0..2].
   groundColor(x, z, h, slope, out) {
-    // getPoi avant biome() : _makePoi réutilise l'objet de biome partagé.
-    const poi = this.getPoi(Math.floor(x / CHUNK_SIZE), Math.floor(z / CHUNK_SIZE));
+    // les lieux d'abord : _makePoi réutilise l'objet de biome partagé
+    const cx = Math.floor(x / CHUNK_SIZE), cz = Math.floor(z / CHUNK_SIZE);
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) this.getPoi(cx + dx, cz + dz);
     const b = this.biome(x, z, h);
     const patch = this.nPatch(x / 22, z / 22) * 0.5 + this.nPatch(x / 7, z / 7) * 0.25;
 
@@ -142,11 +157,20 @@ export class World {
       r = lerp(0.80, 0.36, deep); g = lerp(0.80, 0.60, deep); bl = lerp(0.64, 0.64, deep);
     }
 
-    // Place de village en terre battue.
-    if (poi && poi.plaza) {
-      const d = Math.hypot(x - poi.x, z - poi.z);
-      const p = 1 - smoothstep(poi.plaza - 2, poi.plaza + 1, d + patch * 3);
-      r = lerp(r, 0.80, p); g = lerp(g, 0.72, p); bl = lerp(bl, 0.58, p);
+    // Place de village et chemins en terre battue.
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const poi = this.getPoi(cx + dx, cz + dz);
+        if (!poi || !poi.plaza) continue;
+        const d = Math.hypot(x - poi.x, z - poi.z);
+        if (d > 40) continue;
+        let p = 1 - smoothstep(poi.plaza - 2, poi.plaza + 1, d + patch * 3);
+        for (const [ax, az, bx, bz] of poi.paths) {
+          const sd = segDist(x, z, ax, az, bx, bz);
+          p = Math.max(p, 1 - smoothstep(0.7, 1.5, sd + patch * 0.8));
+        }
+        r = lerp(r, 0.80, p); g = lerp(g, 0.72, p); bl = lerp(bl, 0.58, p);
+      }
     }
 
     out[0] = r; out[1] = g; out[2] = bl;
@@ -155,10 +179,10 @@ export class World {
 
   // Point d'intérêt d'un chunk (au plus un), mis en cache.
   getPoi(cx, cz) {
-    const key = cx + ',' + cz;
+    const key = (cx + 32768) * 65536 + (cz + 32768);
     if (this.poiCache.has(key)) return this.poiCache.get(key);
     const poi = this._makePoi(cx, cz);
-    if (this.poiCache.size > 4000) this.poiCache.clear();
+    if (this.poiCache.size > 6000) this.poiCache.clear();
     this.poiCache.set(key, poi);
     return poi;
   }
@@ -187,13 +211,15 @@ export class World {
     const seedN = Math.floor(hash2(cx, cz, s + 105) * 1e9);
 
     if (r < 0.055 && h > 2.5 && h < 26 && flatEnough && minH > 0.8 && mountain < 0.3) {
-      return { type: 'village', x, z, h, flatR: 18, plaza: 6, name: 'Village de ' + name, seed: seedN };
+      return this._village({ type: 'village', x, z, h, flatR: 24, plaza: 6.5, name: 'Village de ' + name, seed: seedN });
     }
     if (r < 0.085 && dream > 0.5 && h > 1.5 && flatEnough) {
       return { type: 'stones', x, z, h, flatR: 9, name: 'Le Cercle de ' + name, seed: seedN };
     }
     if (r < 0.105 && h > 1.0 && h < 3.8 && lowH < -0.8) {
-      return { type: 'cabin', x, z, h, flatR: 5, dir: lowDir, name: 'La Cabane de ' + name, seed: seedN };
+      const rot = Math.atan2(Math.cos(lowDir), Math.sin(lowDir)); // la porte regarde l'eau
+      const house = { x, z, rot, w: 4.6, d: 4.2, style: 1, seed: seedN };
+      return { type: 'cabin', x, z, h, flatR: 6, dir: lowDir, houses: [house], name: 'La Cabane de ' + name, seed: seedN };
     }
     if (r < 0.135 && h > 1.5 && maxH - minH < 12) {
       return { type: 'ruins', x, z, h, name: 'Les Ruines de ' + name, seed: seedN };
@@ -203,6 +229,30 @@ export class World {
       return { type: 'island', x, z, h: top, name: "L'Île suspendue de " + name, seed: seedN };
     }
     return null;
+  }
+
+  // Disposition d'un village : maisons autour de la place, chemins jusqu'aux portes.
+  _village(poi) {
+    const r = mulberry32(poi.seed);
+    const n = 4 + Math.floor(r() * 3);
+    const a0 = r() * Math.PI * 2;
+    poi.houses = [];
+    poi.paths = [];
+    for (let i = 0; i < n; i++) {
+      const a = a0 + (i / n) * Math.PI * 2 + (r() - 0.5) * 0.3;
+      const dist = 12.5 + r() * 2.5;
+      const hx = poi.x + Math.cos(a) * dist, hz = poi.z + Math.sin(a) * dist;
+      const w = 5 + r() * 1.2, d = 4.4 + r() * 0.8;
+      const rot = Math.atan2(poi.x - hx, poi.z - hz); // la façade regarde la place
+      poi.houses.push({ x: hx, z: hz, rot, w, d, style: Math.floor(r() * 3), seed: Math.floor(r() * 1e9), angle: a });
+      const doorX = hx + Math.sin(rot) * (d / 2 + 0.6), doorZ = hz + Math.cos(rot) * (d / 2 + 0.6);
+      poi.paths.push([poi.x + Math.cos(a) * (poi.plaza - 1), poi.z + Math.sin(a) * (poi.plaza - 1), doorX, doorZ]);
+    }
+    // un chemin qui sort du village
+    const ea = a0 + Math.PI / n;
+    poi.paths.push([poi.x + Math.cos(ea) * poi.plaza, poi.z + Math.sin(ea) * poi.plaza, poi.x + Math.cos(ea) * 30, poi.z + Math.sin(ea) * 30]);
+    poi.exitAngle = ea;
+    return poi;
   }
 
   // Cherche un point de départ agréable : prairie, au sec, pas trop pentu.
@@ -224,4 +274,17 @@ export class World {
     }
     return { x: startX, z: startZ };
   }
+}
+
+export function insideHouse(ho, x, z, margin = 0) {
+  const dx = x - ho.x, dz = z - ho.z;
+  const c = Math.cos(ho.rot), s = Math.sin(ho.rot);
+  const lx = dx * c - dz * s, lz = dx * s + dz * c;
+  return Math.abs(lx) < ho.w / 2 + margin && Math.abs(lz) < ho.d / 2 + margin;
+}
+
+export function segDist(x, z, ax, az, bx, bz) {
+  const vx = bx - ax, vz = bz - az;
+  const t = clamp(((x - ax) * vx + (z - az) * vz) / (vx * vx + vz * vz || 1), 0, 1);
+  return Math.hypot(x - (ax + vx * t), z - (az + vz * t));
 }

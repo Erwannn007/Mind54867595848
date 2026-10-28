@@ -240,3 +240,19 @@ body.idle #topbar { opacity: 0.32; }
 #loading.ready .hint { opacity: 0.7; }
 #loading.ready { cursor: pointer; }
 @keyframes breathe { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
+
+/* vol */
+body.flying #btn-fly { background: rgba(233, 160, 176, 0.55); border-color: rgba(255, 255, 255, 0.8); }
+#fly-ctl {
+  position: absolute;
+  right: calc(var(--safe-r) + 18px);
+  bottom: calc(var(--safe-b) + 28px);
+  display: none;
+  flex-direction: column;
+  gap: 14px;
+  transition: opacity 1.2s ease;
+}
+body.flying #fly-ctl { display: flex; }
+body.idle #fly-ctl { opacity: 0.4; }
+.ico.big { width: 58px; height: 58px; }
+.ico.big svg { width: 28px; height: 28px; }
