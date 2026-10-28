@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Éverlune">
+  <meta name="theme-color" content="#2c3a6e">
+  <title>Éverlune</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">
+    { "imports": { "three": "./lib/three.module.min.js" } }
+  </script>
+</head>
+<body>
+  <canvas id="c"></canvas>
+
+  <div id="ui">
+    <div id="topbar">
+      <button id="btn-cam" class="ico" aria-label="Changer de vue">
+        <svg class="first" viewBox="0 0 24 24"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z"/><circle cx="12" cy="12" r="2.6"/></svg>
+        <svg class="third" viewBox="0 0 24 24"><circle cx="12" cy="7" r="3"/><path d="M6 20c.6-4.4 3-6.6 6-6.6s5.4 2.2 6 6.6"/></svg>
+      </button>
+      <button id="btn-build" class="ico" aria-label="Construire">
+        <svg viewBox="0 0 24 24"><path d="M3.5 11.5 12 4.5l8.5 7"/><path d="M6 10v9.5h12V10"/><path d="M10 19.5v-5h4v5"/></svg>
+      </button>
+      <button id="btn-menu" class="ico" aria-label="Menu">
+        <svg viewBox="0 0 24 24"><path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10z"/></svg>
+      </button>
+    </div>
+
+    <div id="place"><span class="name"></span><span class="sub"></span></div>
+
+    <div id="stick"><div id="knob"></div></div>
+
+    <div id="build-panel" class="panel bottom" hidden>
+      <div class="row scroll">
+        <button data-build="lantern">Lanterne</button>
+        <button data-build="campfire">Feu de camp</button>
+        <button data-build="bench">Banc</button>
+        <button data-build="garden">Jardinière</button>
+        <button data-build="tent">Tente</button>
+        <button data-build="cabin">Cabane</button>
+      </div>
+      <div class="row">
+        <button id="btn-remove" class="soft">Retirer l’objet devant moi</button>
+        <button class="soft" data-close>Fermer</button>
+      </div>
+    </div>
+
+    <div id="menu" class="panel center" hidden>
+      <h1>Éverlune</h1>
+      <p class="clock"><span id="clock">--h--</span></p>
+
+      <h2>Heure</h2>
+      <div class="row">
+        <button data-time="0.26">Aube</button>
+        <button data-time="0.5">Midi</button>
+        <button data-time="0.745">Crépuscule</button>
+        <button data-time="0.95">Nuit</button>
+      </div>
+
+      <h2>Le temps passe</h2>
+      <div class="row seg">
+        <button data-speed="0">Figé</button>
+        <button data-speed="0.5">Lentement</button>
+        <button data-speed="1">Normalement</button>
+        <button data-speed="4">Vite</button>
+      </div>
+
+      <h2>Pixels</h2>
+      <div class="row seg">
+        <button data-pixel="0.5">Gros</button>
+        <button data-pixel="0.75">Doux</button>
+        <button data-pixel="1">Fins</button>
+        <button data-pixel="2">Nets</button>
+      </div>
+
+      <h2>Horizon</h2>
+      <div class="row seg">
+        <button data-view="2">Proche</button>
+        <button data-view="3">Normal</button>
+        <button data-view="4">Lointain</button>
+      </div>
+
+      <h2>Carnet de voyage</h2>
+      <p id="disc-count" class="muted"></p>
+      <ul id="disc-list"></ul>
+
+      <h2>Monde</h2>
+      <div class="row">
+        <input id="seed" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Graine du monde">
+        <button id="btn-seed">Aller</button>
+      </div>
+      <div class="row">
+        <button id="btn-newworld" class="soft">Rêver un nouveau monde</button>
+      </div>
+
+      <div class="row">
+        <button class="primary" data-close>Reprendre la promenade</button>
+      </div>
+    </div>
+
+    <div id="loading">
+      <div class="title">Éverlune</div>
+      <div class="sub">le monde se dessine…</div>
+    </div>
+  </div>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
