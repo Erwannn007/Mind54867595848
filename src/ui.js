@@ -59,10 +59,54 @@ export class UI {
     this.closeAll();
     el.hidden = !open;
     if (open) this.emit('open', id);
+    if (open && this.padFocusOnOpen) this.setPadFocus(this.padItems()[0]);
   }
 
   closeAll() {
     document.querySelectorAll('.panel').forEach((p) => (p.hidden = true));
+    this.setPadFocus(null);
+  }
+
+  // ——— navigation à la manette dans les panneaux ———
+  padItems() {
+    const panel = [...document.querySelectorAll('.panel')].find((p) => !p.hidden);
+    return panel ? [...panel.querySelectorAll('button')] : [];
+  }
+
+  setPadFocus(el) {
+    document.querySelectorAll('.pad-focus').forEach((b) => b.classList.remove('pad-focus'));
+    this.padFocus = el;
+    if (el) {
+      el.classList.add('pad-focus');
+      el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+  }
+
+  // déplacement spatial : le bouton le plus proche dans la direction demandée
+  padNav(dir) {
+    const items = this.padItems();
+    if (!items.length) return;
+    const cur = items.includes(this.padFocus) ? this.padFocus : null;
+    if (!cur) return this.setPadFocus(items[0]);
+    const a = cur.getBoundingClientRect();
+    const ax = a.left + a.width / 2, ay = a.top + a.height / 2;
+    let best = null, bestScore = Infinity;
+    for (const b of items) {
+      if (b === cur) continue;
+      const r = b.getBoundingClientRect();
+      const dx = r.left + r.width / 2 - ax, dy = r.top + r.height / 2 - ay;
+      const main = dir === 'up' ? -dy : dir === 'down' ? dy : dir === 'left' ? -dx : dx;
+      const side = dir === 'up' || dir === 'down' ? Math.abs(dx) : Math.abs(dy);
+      if (main < 4) continue;
+      const score = main + side * 2.5;
+      if (score < bestScore) { bestScore = score; best = b; }
+    }
+    if (best) this.setPadFocus(best);
+  }
+
+  padOk() {
+    if (this.padFocus && this.padItems().includes(this.padFocus)) this.padFocus.click();
+    else this.padNav('down');
   }
 
   anyOpen() {

@@ -230,3 +230,6 @@ body.idle #topbar { opacity: 0.32; }
 #loading.gone { opacity: 0; pointer-events: none; }
 #loading .title { font-size: 42px; font-style: italic; letter-spacing: 0.04em; text-shadow: 0 2px 18px rgba(40, 30, 80, 0.4); }
 #loading .sub { margin-top: 10px; font-size: 14px; letter-spacing: 0.25em; opacity: 0.85; }
+
+/* focus manette */
+.panel button.pad-focus { outline: 3px solid var(--rose); outline-offset: 2px; }

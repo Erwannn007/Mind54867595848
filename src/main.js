@@ -13,6 +13,7 @@ import { Input } from './input.js';
 import { UI } from './ui.js';
 import { Builds } from './build.js';
 import { loadSave, writeSave } from './save.js';
+import { Gamepads } from './gamepad.js';
 
 const DAY_SECONDS = 24 * 60; // une journée complète = 24 minutes à vitesse normale
 
@@ -32,6 +33,8 @@ const motes = new Motes(scene);
 const ui = new UI();
 const input = new Input(canvas, ui);
 input.onActivity = () => ui.activity();
+const pads = new Gamepads();
+input.pad = pads;
 
 let world, chunks, player, builds;
 let tod = save.time;
@@ -143,6 +146,20 @@ ui.on('seed', (s) => {
   persist();
   ui.toast('Un nouveau monde', seed);
 });
+// ——— manette ———
+pads.on = {
+  activity: () => ui.activity(),
+  camera: () => document.getElementById('btn-cam').click(),
+  menu: () => { ui.padFocusOnOpen = true; ui.toggle('menu'); },
+  build: () => { ui.padFocusOnOpen = true; ui.toggle('build-panel'); },
+  nav: (dir) => ui.padNav(dir),
+  ok: () => ui.padOk(),
+  back: () => ui.closeAll(),
+  connect: (id) => ui.toast('Manette connectée', /dualsense|054c|playstation/i.test(id) ? 'DualSense' : ''),
+  disconnect: () => ui.toast('Manette déconnectée'),
+};
+['btn-build', 'btn-menu'].forEach((id) => document.getElementById(id).addEventListener('click', () => (ui.padFocusOnOpen = false)));
+
 ui.on('open', () => ui.setInfo({ time: timeLabel(tod), discovered: save.discovered }));
 
 // ——— découvertes ———
@@ -187,6 +204,7 @@ function frame() {
   shared.uNight.value = skyState.night;
   shared.uWind.value = 0.75 + 0.35 * Math.sin(elapsed * 0.11) + 0.15 * Math.sin(elapsed * 0.37);
 
+  pads.update(dt, ui.anyOpen());
   player.update(dt, input, skyState.night);
   sky.mesh.position.copy(camera.position);
   water.update(center, elapsed, skyState);

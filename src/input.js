@@ -10,6 +10,7 @@ export class Input {
     this.lookers = new Map();     // id -> {x, y}
     this.ui = ui;
     this.onActivity = () => {};
+    this.pad = null; // Gamepads, branché par main.js
 
     el.addEventListener('pointerdown', (e) => this.down(e));
     window.addEventListener('pointermove', (e) => this.moveEv(e));
@@ -81,6 +82,7 @@ export class Input {
   // Vecteur de déplacement combiné (joystick + clavier), longueur ≤ 1.
   moveVector() {
     let x = this.move.x, y = this.move.y;
+    if (this.pad) { x += this.pad.move.x; y += this.pad.move.y; }
     const k = this.keys;
     if (k.has('KeyW') || k.has('KeyZ') || k.has('ArrowUp')) y += 1;
     if (k.has('KeyS') || k.has('ArrowDown')) y -= 1;
@@ -88,7 +90,7 @@ export class Input {
     if (k.has('KeyD')) x += 1;
     const len = Math.hypot(x, y);
     if (len > 1) { x /= len; y /= len; }
-    const run = k.has('ShiftLeft') || k.has('ShiftRight');
+    const run = k.has('ShiftLeft') || k.has('ShiftRight') || (this.pad && this.pad.run);
     return { x, y, run };
   }
 
@@ -99,6 +101,11 @@ export class Input {
 
   takeLook() {
     const l = { dx: this.look.dx, dy: this.look.dy };
+    if (this.pad) {
+      // la manette donne des radians ; on les ramène à l'échelle « pixels glissés »
+      l.dx += this.pad.look.x / 0.0052;
+      l.dy += this.pad.look.y / 0.0052;
+    }
     this.look.dx = this.look.dy = 0;
     return l;
   }
