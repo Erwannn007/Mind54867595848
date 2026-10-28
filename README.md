@@ -7,6 +7,14 @@ Un petit monde 3D cozy et onirique, généré à partir d'une graine, à explore
 - **En ligne** : activer GitHub Pages sur la branche `main` (dossier racine), puis ouvrir l'URL dans Safari et faire *Partager → Sur l'écran d'accueil* pour le plein écran.
 - **En local** : `python3 -m http.server` à la racine puis ouvrir `http://localhost:8000`.
 
+## Ce qu'on y fait
+
+- **Se promener** dans un monde sans fin : prairies, forêts, montagnes, rivières, Prairie de Lune.
+- **Entrer dans les maisons** des villages (lit, table, cheminée qui fume, étagères, lanternes) ; le son devient feutré à l'intérieur et le plancher craque.
+- **Flâner dans les villages** : place et puits, chemins de terre, lampadaires, potagers et épouvantails, étals du marché, linge qui sèche au vent, charrettes de foin.
+- **Voler** : on va là où l'on regarde, on glisse avec de l'élan, la caméra s'incline dans les virages, le vent siffle et l'horizon s'élargit ; on traverse des nuages et on croise des oiseaux. En se posant, on plane doucement jusqu'au sol.
+- **Construire son refuge**, y compris une vraie cabane dans laquelle on entre.
+
 ## Commandes
 
 | iPhone | Ordinateur |
@@ -26,6 +34,8 @@ Brancher ou appairer la manette en Bluetooth, puis appuyer sur un bouton pour qu
 | Marcher | Stick gauche (ou croix directionnelle) | Stick gauche |
 | Courir | Stick à fond, R2 ou L3 | Stick à fond, RT ou L3 |
 | Regarder | Stick droit | Stick droit |
+| S'envoler / se poser | Triangle | Y |
+| Monter / descendre en vol | R1 (ou Croix) / L1 (ou Rond) | RB (ou A) / LB (ou B) |
 | Menu | Options | Start |
 | Construire | Carré ou Create | X ou Select |
 | Dans un panneau | Croix directionnelle pour choisir, Croix pour valider, Rond pour fermer | idem avec A / B |
