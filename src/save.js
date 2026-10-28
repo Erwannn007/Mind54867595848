@@ -6,7 +6,7 @@ export const DEFAULTS = {
   seed: null,
   x: null, z: null, yaw: 0, pitch: -0.08,
   time: 0.3,
-  camMode: 'first',
+  vol: { music: 1, amb: 1, sfx: 1 },
   pixel: 0.75,
   view: 3,
   daySpeed: 1,

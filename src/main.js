@@ -14,6 +14,8 @@ import { UI } from './ui.js';
 import { Builds } from './build.js';
 import { loadSave, writeSave } from './save.js';
 import { Gamepads } from './gamepad.js';
+import { AudioEngine } from './audio.js';
+import { CHUNK_SIZE } from './world.js';
 
 const DAY_SECONDS = 24 * 60; // une journée complète = 24 minutes à vitesse normale
 
@@ -35,6 +37,8 @@ const input = new Input(canvas, ui);
 input.onActivity = () => ui.activity();
 const pads = new Gamepads();
 input.pad = pads;
+const audio = new AudioEngine();
+for (const k of ['music', 'amb', 'sfx']) audio.vol[k] = save.vol[k];
 
 let world, chunks, player, builds;
 let tod = save.time;
@@ -48,17 +52,13 @@ function randomSeed() {
 
 function startWorld(seedStr, keepPosition) {
   if (chunks) chunks.disposeAll();
-  if (player) {
-    scene.remove(player.avatar);
-    scene.remove(player.light);
-  }
+  if (player) scene.remove(player.light);
   if (builds) builds.load([]);
   save.seed = seedStr;
   world = new World(seedFromString(seedStr));
   chunks = new ChunkManager(world, scene, materials, { radius: save.view, detailRadius: Math.min(2, save.view - 1) });
-  player = new Player(scene, camera, chunks, materials);
-  player.setMode(save.camMode);
-  ui.setCamIcon(save.camMode);
+  player = new Player(scene, camera, chunks);
+  player.onStep = (speed) => audio.footstep(surfaceAt(player.x, player.z), speed);
   builds = new Builds(scene, materials, chunks);
 
   let x = save.x, z = save.z;
@@ -98,35 +98,39 @@ function persist() {
   save.x = player.x; save.z = player.z;
   save.yaw = player.tYaw; save.pitch = player.tPitch;
   save.time = tod;
-  save.camMode = player.mode;
   save.builds = builds.items;
   writeSave(save);
 }
 setInterval(persist, 5000);
-document.addEventListener('visibilitychange', () => document.hidden && persist());
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    persist();
+    audio.suspend();
+  } else if (entered) audio.unlock();
+});
 window.addEventListener('pagehide', persist);
 
 // ——— interface ———
 ui.init(save);
-ui.on('camera', () => {
-  const m = player.mode === 'first' ? 'third' : 'first';
-  player.setMode(m);
-  save.camMode = m;
-  ui.setCamIcon(m);
-  camera.fov = m === 'first' ? 70 : 62;
-  resize();
-});
 ui.on('build', (type) => {
-  const d = player.mode === 'first' ? 2.8 : 3.2;
+  const d = 2.8;
   const x = player.x - Math.sin(player.yaw) * d, z = player.z - Math.cos(player.yaw) * d;
   builds.place(type, x, z, player.yaw);
+  audio.ui('build');
   persist();
 });
 ui.on('remove', () => {
   const d = 2.5;
-  builds.removeNear(player.x - Math.sin(player.yaw) * d, player.z - Math.cos(player.yaw) * d);
+  if (builds.removeNear(player.x - Math.sin(player.yaw) * d, player.z - Math.cos(player.yaw) * d)) audio.ui('remove');
   persist();
 });
+ui.on('volume', (kind, v) => {
+  save.vol = { ...save.vol, [kind]: v };
+  audio.setVolume(kind, v);
+  persist();
+});
+ui.on('close', () => audio.ui('close'));
+ui.on('click', () => audio.ui('click'));
 ui.on('speed', (v) => (save.daySpeed = v));
 ui.on('pixel', (v) => {
   save.pixel = v;
@@ -149,18 +153,93 @@ ui.on('seed', (s) => {
 // ——— manette ———
 pads.on = {
   activity: () => ui.activity(),
-  camera: () => document.getElementById('btn-cam').click(),
   menu: () => { ui.padFocusOnOpen = true; ui.toggle('menu'); },
   build: () => { ui.padFocusOnOpen = true; ui.toggle('build-panel'); },
   nav: (dir) => ui.padNav(dir),
   ok: () => ui.padOk(),
   back: () => ui.closeAll(),
-  connect: (id) => ui.toast('Manette connectée', /dualsense|054c|playstation/i.test(id) ? 'DualSense' : ''),
+  connect: (id) => {
+    ui.toast('Manette connectée', /dualsense|054c|playstation/i.test(id) ? 'DualSense' : '');
+    audio.ui('pad');
+  },
+  any: () => enter(),
   disconnect: () => ui.toast('Manette déconnectée'),
 };
 ['btn-build', 'btn-menu'].forEach((id) => document.getElementById(id).addEventListener('click', () => (ui.padFocusOnOpen = false)));
 
-ui.on('open', () => ui.setInfo({ time: timeLabel(tod), discovered: save.discovered }));
+ui.on('open', () => {
+  ui.setInfo({ time: timeLabel(tod), discovered: save.discovered });
+  audio.ui('open');
+});
+
+// ——— son : démarre au premier geste (exigence des navigateurs, surtout iOS) ———
+let entered = false;
+function enter() {
+  audio.unlock();
+  if (!entered && ready) {
+    entered = true;
+    ui.enter();
+    setTimeout(() => ui.toast(world.biomeName(player.x, player.z), 'Éverlune'), 1400);
+  }
+}
+for (const ev of ['pointerup', 'touchend', 'keydown', 'click']) {
+  window.addEventListener(ev, () => {
+    if (!entered) enter();
+    else if (!audio.ready) audio.unlock();
+  }, { capture: true });
+}
+
+// surface sous les pieds, pour le son des pas
+function surfaceAt(x, z) {
+  const h = chunks.surfaceHeight(x, z);
+  if (player.swimming || h < -0.25) return 'water';
+  const slope = Math.abs(chunks.surfaceHeight(x + 1, z) - h) + Math.abs(chunks.surfaceHeight(x, z + 1) - h);
+  const poi = world.getPoi(Math.floor(x / CHUNK_SIZE), Math.floor(z / CHUNK_SIZE));
+  const b = world.biome(x, z, h);
+  if (h > 56) return 'snow';
+  if (b.mountain > 0.55 || slope > 0.9) return 'stone';
+  if (poi && poi.type === 'ruins' && Math.hypot(x - poi.x, z - poi.z) < 9) return 'stone';
+  if (poi && poi.plaza && Math.hypot(x - poi.x, z - poi.z) < poi.plaza + 1) return 'dirt';
+  if (b.beach > 0.5) return 'sand';
+  if (b.cold > 0.85 && h > 40) return 'snow';
+  return 'grass';
+}
+
+// ce que l'oreille perçoit autour du joueur (recalculé quelques fois par seconde)
+const RING = [];
+for (const r of [5, 12, 22]) for (let i = 0; i < 8; i++) RING.push([Math.cos((i / 8) * Math.PI * 2) * r, Math.sin((i / 8) * Math.PI * 2) * r, r]);
+const soundEnv = {};
+function listen() {
+  const x = player.x, z = player.z;
+  let water = 0, total = 0, flow = 0;
+  for (const [dx, dz, r] of RING) {
+    const w = 1 / r;
+    total += w;
+    if (chunks.surfaceHeight(x + dx, z + dz) < -0.3) {
+      water += w;
+      flow = Math.max(flow, world.riverness(x + dx, z + dz));
+    }
+  }
+  const wet = Math.min(1, (water / total) * 1.6);
+  const b = world.biome(x, z, player.y);
+  let fire = 0;
+  for (const it of builds.items) {
+    if (it.type === 'campfire') fire = Math.max(fire, 1 - Math.hypot(it.x - x, it.z - z) / 14);
+  }
+  const poi = chunks.nearestPoi(x, z, 45);
+  soundEnv.night = shared.uNight.value;
+  soundEnv.tod = tod;
+  soundEnv.wind = shared.uWind.value;
+  soundEnv.altitude = player.y;
+  soundEnv.forest = Math.min(1, b.forest * 1.2);
+  soundEnv.dream = b.dream;
+  soundEnv.snow = player.y > 50 ? 1 : 0;
+  soundEnv.river = wet * flow;
+  soundEnv.lake = wet * (1 - flow);
+  soundEnv.swimming = player.swimming;
+  soundEnv.fire = Math.max(0, fire);
+  soundEnv.village = poi && poi.type === 'village' ? Math.max(0, 1 - Math.hypot(poi.x - x, poi.z - z) / 45) : 0;
+}
 
 // ——— découvertes ———
 let lastBiome = '';
@@ -170,6 +249,7 @@ function discoveries(now) {
   if (poi && !save.discovered.includes(poi.name)) {
     save.discovered.push(poi.name);
     ui.toast(poi.name, 'découvert');
+    audio.ui('discover');
     persist();
     return;
   }
@@ -190,7 +270,7 @@ sky.scene.fog.far = 140 + save.view * 22;
 ui.activity();
 
 const clock = new THREE.Clock();
-let discTimer = 0;
+let discTimer = 0, listenTimer = 1;
 let fpsAcc = 0, fpsN = 0;
 
 function frame() {
@@ -213,10 +293,16 @@ function frame() {
 
   renderer.render(scene, camera);
 
+  listenTimer += dt;
+  if (listenTimer > 0.25) {
+    listenTimer = 0;
+    listen();
+  }
+  audio.update(dt, soundEnv);
+
   if (!ready) {
     ready = true;
     ui.ready();
-    setTimeout(() => ui.toast(world.biomeName(player.x, player.z), 'Éverlune'), 1200);
     lastBiome = biomeCandidate = world.biomeName(player.x, player.z);
   }
 
@@ -243,5 +329,5 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
 }
 
 // accès console pour le débogage
-window.everlune = { get world() { return world; }, get player() { return player; }, get chunks() { return chunks; }, renderer, scene, save,
+window.everlune = { audio, get world() { return world; }, get player() { return player; }, get chunks() { return chunks; }, renderer, scene, save,
   setTime: (t) => (tod = t) };

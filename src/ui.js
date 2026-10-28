@@ -25,7 +25,6 @@ export class UI {
     const stop = (el) => el.addEventListener('pointerdown', (e) => e.stopPropagation());
     document.querySelectorAll('.panel, #topbar').forEach(stop);
 
-    $('btn-cam').onclick = () => this.emit('camera');
     $('btn-build').onclick = () => this.toggle('build-panel');
     $('btn-menu').onclick = () => this.toggle('menu');
     document.querySelectorAll('[data-close]').forEach((b) => (b.onclick = () => this.closeAll()));
@@ -36,6 +35,10 @@ export class UI {
     this.segment('speed', state.daySpeed, (v) => this.emit('speed', parseFloat(v)));
     this.segment('pixel', state.pixel, (v) => this.emit('pixel', parseFloat(v)));
     this.segment('view', state.view, (v) => this.emit('view', parseInt(v, 10)));
+    for (const k of ['music', 'amb', 'sfx']) this.segment(k, state.vol[k], (v) => this.emit('volume', k, parseFloat(v)));
+    // petit son doux pour les boutons qui n'ont pas le leur
+    document.querySelectorAll('.panel button:not([data-build]):not(#btn-remove):not([data-close])').forEach((b) =>
+      b.addEventListener('click', () => this.emit('click')));
     document.querySelectorAll('[data-time]').forEach((b) => (b.onclick = () => this.emit('time', parseFloat(b.dataset.time))));
 
     $('seed').value = state.seed;
@@ -63,6 +66,7 @@ export class UI {
   }
 
   closeAll() {
+    if (this.anyOpen()) this.emit('close');
     document.querySelectorAll('.panel').forEach((p) => (p.hidden = true));
     this.setPadFocus(null);
   }
@@ -124,9 +128,6 @@ export class UI {
     }
   }
 
-  setCamIcon(mode) {
-    $('btn-cam').classList.toggle('third', mode === 'third');
-  }
 
   // ——— joystick ———
   stickRadius() {
@@ -177,7 +178,12 @@ export class UI {
     this.idleTimer = setTimeout(() => document.body.classList.add('idle'), 5000);
   }
 
+  // le monde est prêt : on invite à entrer (le premier toucher réveille le son)
   ready() {
+    $('loading').classList.add('ready');
+  }
+
+  enter() {
     $('loading').classList.add('gone');
     setTimeout(() => $('loading').remove(), 1600);
   }

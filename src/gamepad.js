@@ -1,7 +1,7 @@
 // Manettes (AYN Thor, DualSense PS5, Xbox…) via la Gamepad API, disposition « standard ».
 //
 //  Stick gauche : marcher (à fond ou R2 / L3 = courir)   Stick droit : regarder
-//  Triangle / Y : vue 1re ↔ 3e personne                    Options / Start : menu
+//  Options / Start : menu
 //  Carré / X ou Share / Select : construire
 //  Dans un panneau : croix directionnelle ou stick gauche pour choisir,
 //                    Croix / A pour valider, Rond / B pour fermer.
@@ -55,6 +55,7 @@ export class Gamepads {
     const lx = dz(g.axes[0] || 0), ly = dz(g.axes[1] || 0);
     const rx = dz(g.axes[2] || 0), ry = dz(g.axes[3] || 0);
     if (lx || ly || rx || ry || now.some(Boolean)) this.emit('activity');
+    if (now.some((b, i) => b && !prev[i])) this.emit('any');
 
     if (down(BTN.START)) this.emit('menu');
     if (down(BTN.SELECT) || (!panelOpen && down(BTN.X))) this.emit('build');
@@ -82,8 +83,6 @@ export class Gamepads {
       return;
     }
     this.navDir = null;
-
-    if (down(BTN.Y)) this.emit('camera');
 
     let mx = lx, my = -ly;
     if (now[BTN.UP]) my += 1;

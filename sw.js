@@ -1,10 +1,10 @@
 // Hors-ligne : réseau d'abord (pour recevoir les mises à jour), cache en secours.
-const CACHE = 'everlune-v2';
+const CACHE = 'everlune-v3';
 const FILES = [
   './', 'index.html', 'style.css', 'manifest.webmanifest', 'lib/three.module.min.js',
   'src/main.js', 'src/noise.js', 'src/names.js', 'src/world.js', 'src/textures.js', 'src/materials.js',
   'src/builder.js', 'src/props.js', 'src/chunks.js', 'src/sky.js', 'src/water.js', 'src/particles.js',
-  'src/player.js', 'src/input.js', 'src/ui.js', 'src/build.js', 'src/save.js', 'src/gamepad.js',
+  'src/player.js', 'src/input.js', 'src/ui.js', 'src/build.js', 'src/save.js', 'src/gamepad.js', 'src/audio.js', 'src/audio.js',
   'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png',
 ];
 

@@ -22,10 +22,6 @@
 
   <div id="ui">
     <div id="topbar">
-      <button id="btn-cam" class="ico" aria-label="Changer de vue">
-        <svg class="first" viewBox="0 0 24 24"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z"/><circle cx="12" cy="12" r="2.6"/></svg>
-        <svg class="third" viewBox="0 0 24 24"><circle cx="12" cy="7" r="3"/><path d="M6 20c.6-4.4 3-6.6 6-6.6s5.4 2.2 6 6.6"/></svg>
-      </button>
       <button id="btn-build" class="ico" aria-label="Construire">
         <svg viewBox="0 0 24 24"><path d="M3.5 11.5 12 4.5l8.5 7"/><path d="M6 10v9.5h12V10"/><path d="M10 19.5v-5h4v5"/></svg>
       </button>
@@ -88,6 +84,27 @@
         <button data-view="4">Lointain</button>
       </div>
 
+      <h2>Musique</h2>
+      <div class="row seg">
+        <button data-music="0">Silence</button>
+        <button data-music="0.5">Douce</button>
+        <button data-music="1">Normale</button>
+      </div>
+
+      <h2>Sons de la nature</h2>
+      <div class="row seg">
+        <button data-amb="0">Silence</button>
+        <button data-amb="0.5">Doux</button>
+        <button data-amb="1">Normaux</button>
+      </div>
+
+      <h2>Pas et effets</h2>
+      <div class="row seg">
+        <button data-sfx="0">Silence</button>
+        <button data-sfx="0.5">Doux</button>
+        <button data-sfx="1">Normaux</button>
+      </div>
+
       <h2>Carnet de voyage</h2>
       <p id="disc-count" class="muted"></p>
       <ul id="disc-list"></ul>
@@ -109,6 +126,8 @@
     <div id="loading">
       <div class="title">Éverlune</div>
       <div class="sub">le monde se dessine…</div>
+      <div class="tap">toucher pour entrer</div>
+      <div class="hint">🎧 avec un casque, c’est encore plus doux</div>
     </div>
   </div>
 

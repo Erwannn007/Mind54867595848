@@ -81,9 +81,6 @@ body.idle #topbar { opacity: 0.32; }
   filter: drop-shadow(0 1px 1px rgba(40, 30, 80, 0.35));
 }
 .ico:active { transform: scale(0.94); }
-#btn-cam .third { display: none; }
-#btn-cam.third .third { display: block; }
-#btn-cam.third .first { display: none; }
 
 /* ——— joystick ——— */
 #stick {
@@ -233,3 +230,13 @@ body.idle #topbar { opacity: 0.32; }
 
 /* focus manette */
 .panel button.pad-focus { outline: 3px solid var(--rose); outline-offset: 2px; }
+
+/* écran-titre : le premier toucher réveille le son */
+#loading .tap, #loading .hint { opacity: 0; transition: opacity 1.2s ease; }
+#loading .tap { margin-top: 34px; font-size: 18px; font-style: italic; letter-spacing: 0.08em; }
+#loading .hint { margin-top: 14px; font-size: 13px; letter-spacing: 0.06em; }
+#loading.ready .sub { display: none; }
+#loading.ready .tap { opacity: 1; animation: breathe 3.2s ease-in-out infinite; }
+#loading.ready .hint { opacity: 0.7; }
+#loading.ready { cursor: pointer; }
+@keyframes breathe { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
